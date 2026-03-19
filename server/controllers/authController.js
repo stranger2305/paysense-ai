@@ -66,13 +66,13 @@ const registerUser = async (req, res) => {
 
 
     } catch (error) {
-        //handle mongosse validation errors
-        if(error.name === 'ValidationError') {
-            const messages = Object.values(error.errors).map((e) => e.message);
-            return res.status(400).json({ message: messages[0]});
-        }
-        res.status(500).json({ message: 'Server error during registration' });
+    console.error('REGISTER ERROR:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((e) => e.message);
+      return res.status(400).json({ message: messages[0] });
     }
+    res.status(500).json({ message: error.message });
+  }
 };
 
 //Login User
@@ -101,7 +101,7 @@ const loginUser = async (req, res) => {
         }
 
         //step 4 - check if password matches
-        const isMatch = await user.isMatchPassword(password);
+        const isMatch = await user.matchPassword(password);
         if( !isMatch) {
             return res.status(400).json({
                 message: 'Invalid email or password'
@@ -140,8 +140,9 @@ const loginUser = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ message: 'Server error during login' });
-    }
+    console.error('LOGIN ERROR:', error);
+    res.status(500).json({ message: error.message });
+  }
 };
 
 // above method is for the refreshing the access token using refresh token

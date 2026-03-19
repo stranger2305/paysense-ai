@@ -99,11 +99,10 @@ const userSchema = new mongoose.Schema({
 // Middleware(runs automatically before saving)
 
 // hash password before saving to database
-userSchema.pre('save', async function (next) {
-    if (!this.isModified('password')) return next();
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
+userSchema.pre('save', async function () {
+  if (!this.isModified('password')) return;
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
 // METHODS (custom functions on every user object)

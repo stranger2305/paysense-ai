@@ -2,6 +2,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./config/db');
+const cookieParser = require('cookie-parser');
 
 //load environment variables
 dotenv.config();
@@ -18,13 +19,21 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+// Routes
+const authRoutes = require('./routes/authRoutes');
+app.use('/api/auth', authRoutes);
+
+
 
 //routes
-app.use('/',(req, res)=> {
+app.get('/',(req, res)=> {
     res.json({
         message : 'Paysense AI server is running',
-    status: "success",
-timestamp: new Date().toISOString()    });
+      status: "success",
+      timestamp: new Date().toISOString()   
+     });
 });
 
 
