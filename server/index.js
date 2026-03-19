@@ -11,7 +11,7 @@ connectDB();
 
 const app = express();
 
-//midllewares
+//middlewares
 app.use(cors({
     origin : process.env.CLIENT_URL,
     credentials: true
