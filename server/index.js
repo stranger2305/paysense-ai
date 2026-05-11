@@ -3,6 +3,7 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const connectDB = require('./config/db');
 const cookieParser = require('cookie-parser');
+const { notFound, errorHandler} = require('./middleware/errorMiddleware');
 
 //load environment variables
 dotenv.config();
@@ -23,13 +24,12 @@ app.use(cookieParser());
 
 // Routes
 const authRoutes = require('./routes/authRoutes');
-app.use('/api/auth', authRoutes);
-
+const transactionRoutes = require('./routes/transactionRoutes');
 const statementRoutes = require('./routes/statementRoutes');
-app.use('/api/statments', statementRoutes);
 
-
-
+app.use('/api/auth', authRoutes);
+app.use('/api/transactions', transactionRoutes);
+app.use('/api/statements', statementRoutes);
 //routes
 app.get('/',(req, res)=> {
     res.json({
@@ -40,18 +40,9 @@ app.get('/',(req, res)=> {
 });
 
 
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
-});
-
-//error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
-    message: err.message || 'Internal Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
+// Error Middleware = must be last
+app.use(notFound);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
