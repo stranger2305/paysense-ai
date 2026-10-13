@@ -1,14 +1,16 @@
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 
 // -----------------------------------------------
 // Main function — takes a PDF buffer, returns
 // structured transactions array
 // -----------------------------------------------
 const parseBankStatement = async (pdfBuffer) => {
+  let parser;
   try {
-    // Step 1 — Extract raw text from PDF
-    const data = await pdfParse(pdfBuffer);
-    const rawText = data.text;
+    // Step 1 — Extract raw text from PDF using the new pdf-parse v2 API
+    parser = new PDFParse({ data: pdfBuffer });
+    const result = await parser.getText();
+    const rawText = result.text;
 
     // Step 2 — Detect which bank this statement is from
     const bankName = detectBank(rawText);
@@ -29,6 +31,9 @@ const parseBankStatement = async (pdfBuffer) => {
 
   } catch (error) {
     throw new Error(`PDF parsing failed: ${error.message}`);
+  } finally {
+    // Always clean up the parser's internal resources, even on error
+    if (parser) await parser.destroy();
   }
 };
 
@@ -56,8 +61,6 @@ const detectBank = (text) => {
 // Extract statement period (start and end dates)
 // -----------------------------------------------
 const extractPeriod = (text) => {
-  // Match patterns like "01/04/2024 to 31/03/2025"
-  // or "From: 01-Apr-2024 To: 31-Mar-2025"
   const patterns = [
     /(\d{2}[\/\-]\d{2}[\/\-]\d{4})\s+(?:to|TO)\s+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/,
     /from[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})\s+to[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i,
@@ -67,14 +70,16 @@ const extractPeriod = (text) => {
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) {
-      return {
-        start: new Date(match[1]),
-        end: new Date(match[2]),
-      };
+      const start = parseDate(match[1]);
+      const end = parseDate(match[2]);
+
+      // Guard against any still-invalid dates (e.g. unexpected formats)
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        return { start, end };
+      }
     }
   }
 
-  // Default to current month if not found
   const now = new Date();
   return {
     start: new Date(now.getFullYear(), now.getMonth(), 1),
@@ -86,7 +91,6 @@ const extractPeriod = (text) => {
 // Extract transactions from raw text
 // -----------------------------------------------
 const extractTransactions = (text, bankName) => {
-  // Split text into lines and clean them
   const lines = text
     .split('\n')
     .map((line) => line.trim())
@@ -96,8 +100,6 @@ const extractTransactions = (text, bankName) => {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-
-    // Try to parse each line as a transaction
     const transaction = parseLine(line, bankName);
     if (transaction) {
       transactions.push(transaction);
@@ -111,22 +113,13 @@ const extractTransactions = (text, bankName) => {
 // Parse a single line into a transaction object
 // -----------------------------------------------
 const parseLine = (line, bankName) => {
-  // Pattern 1: DD/MM/YYYY or DD-MM-YYYY at start of line
-  // Example: "15/03/2024 SWIGGY ORDER 12345 500.00 4500.00"
   const pattern1 = /^(\d{2}[\/\-]\d{2}[\/\-]\d{4})\s+(.+?)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)(?:\s+([\d,]+\.?\d*))?$/;
-
-  // Pattern 2: Date with month name
-  // Example: "15 Mar 2024 UPI/PHONEPE/123456 DR 1000.00"
   const pattern2 = /^(\d{2}\s+\w{3}\s+\d{4})\s+(.+?)\s+(DR|CR|dr|cr)?\s*([\d,]+\.?\d*)$/i;
-
-  // Pattern 3: HDFC style
-  // Example: "15/03/2024 15/03/2024 UPI-SWIGGY-123 500.00 0.00 4500.00"
   const pattern3 = /^(\d{2}[\/\-]\d{2}[\/\-]\d{4})\s+\d{2}[\/\-]\d{2}[\/\-]\d{4}\s+(.+?)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)$/;
 
   let match = null;
   let transaction = null;
 
-  // Try Pattern 3 first (most specific)
   match = line.match(pattern3);
   if (match) {
     const amount1 = parseAmount(match[3]);
@@ -142,7 +135,6 @@ const parseLine = (line, bankName) => {
     };
   }
 
-  // Try Pattern 1
   if (!transaction) {
     match = line.match(pattern1);
     if (match) {
@@ -159,7 +151,6 @@ const parseLine = (line, bankName) => {
     }
   }
 
-  // Try Pattern 2
   if (!transaction) {
     match = line.match(pattern2);
     if (match) {
@@ -174,7 +165,6 @@ const parseLine = (line, bankName) => {
     }
   }
 
-  // Validate the transaction
   if (transaction && isValidTransaction(transaction)) {
     return transaction;
   }
@@ -187,7 +177,6 @@ const parseLine = (line, bankName) => {
 // -----------------------------------------------
 const parseAmount = (amountStr) => {
   if (!amountStr) return 0;
-  // Remove commas (Indian number format: 1,00,000)
   const cleaned = amountStr.replace(/,/g, '');
   const amount = parseFloat(cleaned);
   return isNaN(amount) ? 0 : Math.abs(amount);
@@ -199,11 +188,9 @@ const parseAmount = (amountStr) => {
 const parseDate = (dateStr) => {
   if (!dateStr) return new Date();
 
-  // Handle DD/MM/YYYY or DD-MM-YYYY
   const dmyPattern = /^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/;
   const dmyMatch = dateStr.match(dmyPattern);
   if (dmyMatch) {
-    // Month is 0-indexed in JavaScript Date
     return new Date(
       parseInt(dmyMatch[3]),
       parseInt(dmyMatch[2]) - 1,
@@ -211,7 +198,6 @@ const parseDate = (dateStr) => {
     );
   }
 
-  // Handle "15 Mar 2024" format
   return new Date(dateStr);
 };
 
@@ -221,7 +207,6 @@ const parseDate = (dateStr) => {
 const determineType = (description, debitAmount, creditAmount) => {
   const upperDesc = description.toUpperCase();
 
-  // Keywords that indicate credit (money coming in)
   const creditKeywords = [
     'SALARY', 'CREDIT', 'REFUND', 'CASHBACK',
     'INTEREST', 'DIVIDEND', 'NEFT CR', 'IMPS CR',
@@ -240,16 +225,9 @@ const determineType = (description, debitAmount, creditAmount) => {
 // a real transaction
 // -----------------------------------------------
 const isValidTransaction = (transaction) => {
-  // Must have a valid date
   if (!transaction.date || isNaN(transaction.date.getTime())) return false;
-
-  // Must have a positive amount
   if (!transaction.amount || transaction.amount <= 0) return false;
-
-  // Description must be meaningful (more than 3 characters)
   if (!transaction.description || transaction.description.length < 3) return false;
-
-  // Amount must be reasonable (not more than 10 crore)
   if (transaction.amount > 100000000) return false;
 
   return true;

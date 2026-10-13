@@ -6,6 +6,7 @@ const {
   refreshAccessToken,
   logoutUser,
   getMe,
+  completeOnboarding,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -17,5 +18,6 @@ router.post('/logout', logoutUser);
 
 // Private routes (need valid access token)
 router.get('/me', protect, getMe);
+router.put('/onboarding', protect, completeOnboarding);
 
 module.exports = router;

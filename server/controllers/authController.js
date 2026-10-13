@@ -228,10 +228,55 @@ const getMe = async (req, res) => {
   }
 };
 
+// @desc    Complete user onboarding (persona, traits, income)
+// @route   PUT /api/auth/onboarding
+// @access  Private
+const completeOnboarding = async (req, res) => {
+  try {
+    const { persona, personalityTraits, monthlyIncome } = req.body;
+
+    // Validation
+    if (!persona || !['genz', 'family'].includes(persona)) {
+      return res.status(400).json({ message: 'Valid persona is required' });
+    }
+
+    // req.user.id comes from the protect middleware (decoded JWT)
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Update fields
+    user.persona = persona;
+    user.personalityTraits = personalityTraits || user.personalityTraits;
+    user.monthlyIncome = monthlyIncome || 0;
+    user.isOnboarded = true;
+
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      message: 'Onboarding completed successfully',
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        persona: user.persona,
+        personalityTraits: user.personalityTraits,
+        monthlyIncome: user.monthlyIncome,
+        isOnboarded: user.isOnboarded,
+      },
+    });
+  } catch (error) {
+    console.error('ONBOARDING ERROR:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   refreshAccessToken,
   logoutUser,
   getMe,
+  completeOnboarding,
 };
